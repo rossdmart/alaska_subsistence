@@ -22,11 +22,11 @@ s3 = boto3.client(
 )
 
 # 2) Prefixes for JSON (search) and TXT (link) folders in your bucket
-JSON_PREFIX  = {"EIRAC": "Embedded_EIRAC", "WIRAC": "Embedded_WIRAC"}
-TXT_PREFIX   = {"EIRAC": "Cleaned_EIRAC",   "WIRAC": "Cleaned_WIRAC"}
+JSON_PREFIX = {"EIRAC": "Embedded_EIRAC", "WIRAC": "Embedded_WIRAC"}
+TXT_PREFIX  = {"EIRAC": "Cleaned_EIRAC",   "WIRAC": "Cleaned_WIRAC"}
 
-# 3) Region → file-name prefix mapping
-FILE_PREFIX  = {"EIRAC": "R9", "WIRAC": "R6"}
+# 3) Region → file‐name prefix mapping
+FILE_PREFIX = {"EIRAC": "R9", "WIRAC": "R6"}
 
 # 4) Base URL for your public .txt files
 STATIC_BASE = f"https://{S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com"
@@ -88,7 +88,7 @@ if run_search:
     with st.spinner("Searching transcripts…"):
         progress = st.sidebar.progress(0)
         for i, (json_key, _) in enumerate(filtered):
-            obj = s3.get_object(Bucket=S3_BUCKET, Key=json_key)
+            obj  = s3.get_object(Bucket=S3_BUCKET, Key=json_key)
             byts = obj["Body"].read()
             for rec in ijson.items(io.BytesIO(byts), "item"):
                 text = rec.get("text", "")
@@ -105,10 +105,19 @@ if run_search:
     else:
         for r in sorted(results, key=lambda x: x["Date"]):
             date_str = r["Date"]
-            speaker  = r["Speaker"]
+            speaker  = r["Speaker"] or ""
+            # clean up the speaker field
+            sp = re.sub(r'\s+', ' ', speaker).strip()
+            # if after stripping it's just punctuation or empty, omit it
+            if not re.search(r'\w', sp):
+                link_text = f"📄 View full transcript ({date_str})"
+            else:
+                link_text = f"📄 View full transcript ({date_str}) — {sp}"
+
+            # build the .txt URL
             txt_key  = f"{TXT_PREFIX[region]}/{FILE_PREFIX[region]}_{date_str}.txt"
             txt_url  = f"{STATIC_BASE}/{txt_key}"
-            link_text = f"📄 View full transcript ({date_str}) — {speaker}"
+
             st.markdown(f"[**{link_text}**]({txt_url})")
-            st.write(r["Text"])
+            st.markdown(r["Text"])
             st.markdown("---")
