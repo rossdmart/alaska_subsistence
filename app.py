@@ -7,7 +7,6 @@ import boto3
 import ijson
 import streamlit as st
 
-# 1) S3 configuration (set these as Render env vars)
 AWS_REGION = os.getenv("AWS_REGION", "us-east-2")
 S3_BUCKET  = os.getenv("S3_BUCKET")
 if not S3_BUCKET:
@@ -21,17 +20,11 @@ s3 = boto3.client(
     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
 )
 
-# 2) Prefixes for JSON (search) and TXT (link) folders in your bucket
 JSON_PREFIX = {"EIRAC": "Embedded_EIRAC", "WIRAC": "Embedded_WIRAC"}
 TXT_PREFIX  = {"EIRAC": "Cleaned_EIRAC",   "WIRAC": "Cleaned_WIRAC"}
+FILE_PREFIX = {"EIRAC": "R9",              "WIRAC": "R6"}
 
-# 3) Region → file‐name prefix mapping
-FILE_PREFIX = {"EIRAC": "R9", "WIRAC": "R6"}
-
-# 4) Base URL for your public .txt files
-STATIC_BASE = f"https://{S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com"
-
-# 5) Customize these!
+STATIC_BASE     = f"https://{S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com"
 WELCOME_MESSAGE = """\
 **Welcome! This webpage runs keyword searches of Alaska Western and Eastern Interior Regional Advisory Council meeting transcripts.**
 
@@ -43,20 +36,18 @@ The search results only fetch the uninterrupted speaker turn that contains the k
 
 Please give me feedback on this tool! **Email me at ross.martin@yale.edu with questions comments, or just to connect.** I developed it as part of my PhD research-- I plan to update and improve it over time.
 """
-DEFAULT_KEYWORD = "What do you want to find?"
+DEFAULT_KEYWORD = "What do you want to look for?"
 
-# 6) Streamlit page setup
 st.set_page_config(page_title="Subsistence Transcript Search", layout="wide")
 st.info(WELCOME_MESSAGE)
 st.title("Subsistence Transcript Search")
 
-region     = st.sidebar.selectbox("Region", list(JSON_PREFIX.keys()))
-keyword    = st.sidebar.text_input("Keyword", DEFAULT_KEYWORD)
+region     = st.sidebar.selectbox("Region",     list(JSON_PREFIX.keys()))
+keyword    = st.sidebar.text_input("Keyword",   DEFAULT_KEYWORD)
 start_year = st.sidebar.number_input("Start Year", 1900, 2100, 1993)
 end_year   = st.sidebar.number_input("End Year",   1900, 2100, 2024)
 run_search = st.sidebar.button("Run Search")
 
-# 7) List JSON keys + parse dates (cached)
 @st.cache_data(show_spinner=False)
 def list_json_keys(region_key):
     prefix = JSON_PREFIX[region_key] + "/"
@@ -75,7 +66,6 @@ def list_json_keys(region_key):
             parsed.append((key, dt))
     return parsed
 
-# 8) Perform search when button clicked
 if run_search:
     all_json = list_json_keys(region)
     filtered = [(k, d) for k, d in all_json if d and start_year <= d.year <= end_year]
@@ -104,19 +94,17 @@ if run_search:
         st.warning("No matches found.")
     else:
         for r in sorted(results, key=lambda x: x["Date"]):
-            date_str = r["Date"]
-            speaker  = r["Speaker"] or ""
-            # clean up the speaker field
-            sp = re.sub(r'\s+', ' ', speaker).strip()
-            # if after stripping it's just punctuation or empty, omit it
-            if not re.search(r'\w', sp):
-                link_text = f"📄 View full transcript ({date_str})"
-            else:
+            date_str    = r.get("Date", "")
+            raw_speaker = r.get("Speaker", "")
+            speaker     = str(raw_speaker) if raw_speaker is not None else ""
+            sp          = re.sub(r"\s+", " ", speaker).strip()
+            if re.search(r"\w", sp):
                 link_text = f"📄 View full transcript ({date_str}) — {sp}"
+            else:
+                link_text = f"📄 View full transcript ({date_str})"
 
-            # build the .txt URL
-            txt_key  = f"{TXT_PREFIX[region]}/{FILE_PREFIX[region]}_{date_str}.txt"
-            txt_url  = f"{STATIC_BASE}/{txt_key}"
+            txt_key = f"{TXT_PREFIX[region]}/{FILE_PREFIX[region]}_{date_str}.txt"
+            txt_url = f"{STATIC_BASE}/{txt_key}"
 
             st.markdown(f"[**{link_text}**]({txt_url})")
             st.markdown(r["Text"])
