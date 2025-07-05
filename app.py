@@ -22,21 +22,18 @@ s3 = boto3.client(
 )
 
 # 2) Prefixes for JSON (search) and TXT (link) folders in your bucket
-JSON_PREFIX = {
-    "EIRAC": "Embedded_EIRAC",
-    "WIRAC": "Embedded_WIRAC"
-}
-TXT_PREFIX = {
-    "EIRAC": "Cleaned_EIRAC",
-    "WIRAC": "Cleaned_WIRAC"
-}
+JSON_PREFIX  = {"EIRAC": "Embedded_EIRAC", "WIRAC": "Embedded_WIRAC"}
+TXT_PREFIX   = {"EIRAC": "Cleaned_EIRAC",   "WIRAC": "Cleaned_WIRAC"}
 
-# 3) Base URL for your public .txt files
+# 3) Region → file-name prefix mapping
+FILE_PREFIX  = {"EIRAC": "R9", "WIRAC": "R6"}
+
+# 4) Base URL for your public .txt files
 STATIC_BASE = f"https://{S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com"
 
-# 4) Customize these!
+# 5) Customize these!
 WELCOME_MESSAGE = """\
-Welcome! This webpage runs keyword searches of Alaska Western and Eastern Interior Regional Advisory Council meeting transcripts!
+**Welcome! This webpage runs keyword searches of Alaska Western and Eastern Interior Regional Advisory Council meeting transcripts.**
 
 These meetings have been hosted biannually from 1993-today by The Federal Office of Subsistence Management. Each Regional Advisory Council convenes to talk about matters of importance to federal subsistence management policy in Alaska.
 
@@ -44,11 +41,11 @@ Here's how it works: type in your search keyword, and click run search. A search
 
 The search results only fetch the uninterrupted speaker turn that contains the keyword. So you won't get a back-and-forth conversation. If you want the full conversation and discussion context, click the document hyperlink to view the raw text file from from that specific date. Then simply copy and paste the search result into a Command F search of the text file to read more thoroughly.
 
-Please give me feedback on this tool! Email me at ross.martin@yale.edu with questions comments, or just to connect. I developed it as part of my PhD research-- I plan to update and improve it over time.
+Please give me feedback on this tool! **Email me at ross.martin@yale.edu with questions comments, or just to connect.** I developed it as part of my PhD research-- I plan to update and improve it over time.
 """
-DEFAULT_KEYWORD = "What do you want to find out?"
+DEFAULT_KEYWORD = "What do you want to find?"
 
-# 5) Streamlit page setup
+# 6) Streamlit page setup
 st.set_page_config(page_title="Subsistence Transcript Search", layout="wide")
 st.info(WELCOME_MESSAGE)
 st.title("Subsistence Transcript Search")
@@ -59,17 +56,17 @@ start_year = st.sidebar.number_input("Start Year", 1900, 2100, 1993)
 end_year   = st.sidebar.number_input("End Year",   1900, 2100, 2024)
 run_search = st.sidebar.button("Run Search")
 
-# 6) List all JSON keys for a region, parse out dates
+# 7) List JSON keys + parse dates (cached)
 @st.cache_data(show_spinner=False)
 def list_json_keys(region_key):
     prefix = JSON_PREFIX[region_key] + "/"
     resp   = s3.list_objects_v2(Bucket=S3_BUCKET, Prefix=prefix)
-    items  = resp.get("Contents", [])
+    items  = resp.get("Contents", []) or []
     parsed = []
     for obj in items:
         key = obj["Key"]
         if key.lower().endswith(".json"):
-            fname    = key.split("/")[-1]
+            fname    = key.rsplit("/", 1)[-1]
             date_str = fname.split("_")[1].split(".")[0]
             try:
                 dt = datetime.strptime(date_str, "%Y-%m-%d")
@@ -78,7 +75,7 @@ def list_json_keys(region_key):
             parsed.append((key, dt))
     return parsed
 
-# 7) Perform search when button clicked
+# 8) Perform search when button clicked
 if run_search:
     all_json = list_json_keys(region)
     filtered = [(k, d) for k, d in all_json if d and start_year <= d.year <= end_year]
@@ -109,7 +106,7 @@ if run_search:
         for r in sorted(results, key=lambda x: x["Date"]):
             date_str = r["Date"]
             speaker  = r["Speaker"]
-            txt_key  = f"{TXT_PREFIX[region]}/{region}_{date_str}.txt"
+            txt_key  = f"{TXT_PREFIX[region]}/{FILE_PREFIX[region]}_{date_str}.txt"
             txt_url  = f"{STATIC_BASE}/{txt_key}"
             link_text = f"📄 View full transcript ({date_str}) — {speaker}"
             st.markdown(f"[**{link_text}**]({txt_url})")
